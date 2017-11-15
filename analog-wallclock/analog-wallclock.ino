@@ -11,9 +11,9 @@
 #include <WiFiUdp.h>
 
 // 7-segment TM1637
-#define SEGMENTS_DIO_PIN               (D3)
-#define SEGMENTS_CLK_PIN               (D2)
-#define SEGMENTS_BRIGHTNESS             (4) // 0-7
+#define SEGMENTS_DIO_PIN               (D6)
+#define SEGMENTS_CLK_PIN               (D5)
+#define SEGMENTS_BRIGHTNESS             (1) // 0-7
 
 // RGB 60-LED ring 
 #define LEDRING_DATA_PIN                (D4)
@@ -42,6 +42,11 @@ time_t utc, local_time, prev_local_time=0;
 CRGB leds[NUM_LEDS];
 TM1637Display segment_display(SEGMENTS_CLK_PIN, SEGMENTS_DIO_PIN);
 
+static const CRGB hour_colour_am = CRGB(0,16,0);
+static const CRGB hour_colour_pm = CRGB(0,0,16);
+static const CRGB minute_colour = CRGB(16,0,0);
+static const CRGB second_colour = CRGB(16,16,0);
+
 
 void setLED(ledposition_t pos, const struct CRGB& colour)
 {
@@ -55,21 +60,27 @@ void setSegments(byte day, byte month)
   segment_display.showNumberDec(month%100, false, 2, 2);
 }
 
+void setSegmentsSync()
+{
+  const uint8_t segments[] = {1|32|64|4|8 /*S*/, 32|64|2|4|8 /*y*/, 16|64|4 /*n*/, 64|16|8 /*c*/};
+  segment_display.setSegments(segments);
+}
+
 void digitalClockDisplay(const time_t& local_time)
 {
   ledposition_t pos;  
   for (pos=0; pos<NUM_LEDS; pos++) leds[pos]=CRGB::Black;
 
-  CRGB hour_colour = (isAM(local_time) ? CRGB::Green : CRGB::Blue);
+  CRGB hour_colour = isAM(local_time) ? hour_colour_am : hour_colour_pm;
   int minute_pos = minute(local_time)*NUM_LEDS/60;
   int hour_pos = hour(local_time)*NUM_LEDS/12 + (minute_pos/12);
   setLED(hour_pos-1, hour_colour);
   setLED(hour_pos, hour_colour);
   setLED(hour_pos+1, hour_colour);
 
-  setLED(minute_pos, CRGB::Red);
+  setLED(minute_pos, minute_colour);
 
-  setLED(second(local_time)*NUM_LEDS/60, CRGB::Yellow);
+  setLED(second(local_time)*NUM_LEDS/60, second_colour);
 
   setSegments(day(local_time), month(local_time));
 
@@ -134,13 +145,11 @@ void setup()
   FastLED.addLeds<WS2812B, LEDRING_DATA_PIN, GRB>(leds, NUM_LEDS);
 
   segment_display.setBrightness(SEGMENTS_BRIGHTNESS);
+  setSegmentsSync();
 
   WiFi.begin(const_cast<char*>(ssid), pass);
-  int i = 0;
   while (WiFi.status() != WL_CONNECTED) {
-    setSegments(i/100, i%100);
-    i++;
-    delay(500);
+    delay(100);
   }
 
   Udp.begin(localPort);
